@@ -37,6 +37,10 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 
+interface DirectModuleLauncher {
+    abstract void launch(int moduleId);
+}
+
 public class PeripheralModulesFragment extends ConnectedPeripheralFragment {
     // Log
     private final static String TAG = PeripheralModulesFragment.class.getSimpleName();
@@ -159,6 +163,11 @@ public class PeripheralModulesFragment extends ConnectedPeripheralFragment {
             if (fragment != null) {
                 final int moduleId = (int) view1.getTag();
                 fragment.onModuleSelected(moduleId);
+            }
+        }, mid -> {
+            PeripheralModulesFragment fragment = weakFragment.get();
+            if (fragment != null) {
+                fragment.onModuleSelected(mid);
             }
         });
         mRecyclerView.setAdapter(mModulesAdapter);
@@ -298,13 +307,15 @@ public class PeripheralModulesFragment extends ConnectedPeripheralFragment {
         private List<BlePeripheral> mConnectedPeripherals;
         private BlePeripheral mBlePeripheral;
         private View.OnClickListener mOnClickListener;
+        private DirectModuleLauncher mDirectLaunch;
 
-        ModulesAdapter(@NonNull Context context, @NonNull List<BlePeripheralBattery> batteryPeripherals, @Nullable BlePeripheral blePeripheralForSingleConnectionMode, @NonNull View.OnClickListener onClickListener) {
+        ModulesAdapter(@NonNull Context context, @NonNull List<BlePeripheralBattery> batteryPeripherals, @Nullable BlePeripheral blePeripheralForSingleConnectionMode, @NonNull View.OnClickListener onClickListener, DirectModuleLauncher directLaunch) {
             mContext = context.getApplicationContext();
             mBatteryPeripherals = batteryPeripherals;
             mConnectionMode = blePeripheralForSingleConnectionMode == null ? CONNECTIONMODE_MULTIPLEPERIPHERAL : CONNECTIONMODE_SINGLEPERIPHERAL;
             mBlePeripheral = blePeripheralForSingleConnectionMode;
             mOnClickListener = onClickListener;
+            mDirectLaunch = directLaunch;
         }
 
         private int getModuleCellsStartPosition() {
@@ -466,6 +477,13 @@ public class PeripheralModulesFragment extends ConnectedPeripheralFragment {
                     moduleViewHolder.mainViewGroup.setTag(moduleId);
                     moduleViewHolder.mainViewGroup.setOnClickListener(view -> mOnClickListener.onClick(view));
                     break;
+                }
+            }
+
+            // Automatically launch the UART module for our special device
+            if (mBlePeripheral.getName().equals("Bluefruit52")) {
+                if (mDirectLaunch != null) {
+                    mDirectLaunch.launch(MODULE_UART);
                 }
             }
         }

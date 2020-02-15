@@ -5,6 +5,7 @@ import android.os.ParcelUuid;
 import android.os.Parcelable;
 import android.text.Html;
 import android.text.Spanned;
+import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
@@ -349,6 +350,18 @@ class BlePeripheralsAdapter extends RecyclerView.Adapter<BlePeripheralsAdapter.V
         holder.dataTextView.setText(text);
 
         holder.rawDataButton.setOnClickListener(v -> mListener.onAdvertisementData(blePeripheral));
+
+        // Auto-connect if we find our target device
+        Log.d(TAG, "Checking for auto-connect for device '" + name + "'");
+        if (name.equals("Bluefruit52")) {
+            Log.d(TAG, "We have found our device!");
+            BlePeripheral selectedBlePeripheral = weakBlePeripheral.get();
+            if (selectedBlePeripheral != null) {
+                if (connectionState == BlePeripheral.STATE_DISCONNECTED) {
+                    selectedBlePeripheral.connect(mContext);
+                }
+            }
+        }
     }
 
     @Override
