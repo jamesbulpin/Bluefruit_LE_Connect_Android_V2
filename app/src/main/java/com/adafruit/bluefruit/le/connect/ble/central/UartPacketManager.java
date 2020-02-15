@@ -75,12 +75,12 @@ public class UartPacketManager extends UartPacketManagerBase {
             mMainHandler.post(() -> listener.onUartPacket(uartPacket));
         }
 
-        final boolean isMqttEnabled = mMqttManager != null;
-        final boolean shouldBeSent = !wasReceivedFromMqtt || (isMqttEnabled && MqttSettings.getSubscribeBehaviour(mContext) == MqttSettings.kSubscribeBehaviour_Transmit);
+        //final boolean isMqttEnabled = mMqttManager != null;
+        //final boolean shouldBeSent = !wasReceivedFromMqtt || (isMqttEnabled && MqttSettings.getSubscribeBehaviour(mContext) == MqttSettings.kSubscribeBehaviour_Transmit);
 
-        if (shouldBeSent) {
+        //if (shouldBeSent) {
             send(uartPeripheral, data, null);
-        }
+        //}
     }
 
     public void sendEachPacketSequentially(@NonNull BlePeripheralUart uartPeripheral, @NonNull byte[] data, int withResponseEveryPacketCount, BlePeripheral.ProgressHandler progressHandler, BlePeripheral.CompletionHandler completionHandler) {
