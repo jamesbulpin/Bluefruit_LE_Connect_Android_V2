@@ -342,7 +342,7 @@ public class UartModeFragment extends UartBaseFragment {
         }
 
         BlePeripheralUart blePeripheralUart = mBlePeripheralsUart.get(0);
-        final String message = new String(mqttMessage.getPayload());
+        final String message = new String(mqttMessage.getPayload()) + "\0";
 
         ((UartPacketManager) mUartData).send(blePeripheralUart, message, true);          // Don't republish to mqtt something received from mqtt
 
