@@ -40,6 +40,10 @@ public class ScannerViewModel extends AndroidViewModel implements BleScanner.Ble
     private final static String TAG = ScannerViewModel.class.getSimpleName();
     // endregion
 
+    // region Data - callbacks
+    private DeviceDisconnectNotifier mDeviceDisconnectNotifier;
+    // endregion
+
     // region Data - Scanning
     private BleScanner mScanner = BleScanner.getInstance();
     private final MutableLiveData<Boolean> mIsScanning = new MutableLiveData<>();
@@ -237,6 +241,10 @@ public class ScannerViewModel extends AndroidViewModel implements BleScanner.Ble
         mNumDevicesConnected.setValue(0);
         mNumPeripheralsFilteredOut.setValue(0);
         mNumPeripheralsFiltered.setValue(0);
+    }
+
+    public void setDeviceDisconnectNotifier(DeviceDisconnectNotifier deviceDisconnectNotifier) {
+        mDeviceDisconnectNotifier = deviceDisconnectNotifier;
     }
 
     @Override
@@ -647,6 +655,10 @@ public class ScannerViewModel extends AndroidViewModel implements BleScanner.Ble
                             }
                             mPeripheralsDiscoveringConnectingOrDiscoveringServices.remove(identifier);
                         }
+                        if (mDeviceDisconnectNotifier != null) {
+                            String deviceName = blePeripheral.getName();
+                            mDeviceDisconnectNotifier.notify(deviceName);
+                        }
                     } else if (BlePeripheral.kBlePeripheral_OnConnecting.equals(action)) {
                         if (!mPeripheralsDiscoveringConnectingOrDiscoveringServices.contains(identifier)) {         // peripheral starts connection setup
                             mPeripheralsDiscoveringConnectingOrDiscoveringServices.add(identifier);
@@ -668,4 +680,8 @@ public class ScannerViewModel extends AndroidViewModel implements BleScanner.Ble
         }
     };
     // endregion
+
+    public interface DeviceDisconnectNotifier {
+        void notify(String deviceName);
+    }
 }

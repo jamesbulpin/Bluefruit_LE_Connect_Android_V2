@@ -522,6 +522,18 @@ public class ScannerFragment extends Fragment implements ScannerStatusFragmentDi
         if (activity != null) {
             mDfuViewModel = new ViewModelProvider(activity).get(DfuViewModel.class);
             mScannerViewModel = new ViewModelProvider(this, new ViewModelProvider.AndroidViewModelFactory(activity.getApplication())).get(ScannerViewModel.class);
+            mScannerViewModel.setDeviceDisconnectNotifier(deviceName -> {
+                Log.d(TAG, "Notification of disconnection of device " + deviceName);
+                final Context context = getContext();
+                SharedPreferences preferences = context.getSharedPreferences(kPreferences, MODE_PRIVATE);
+                boolean autoConnectIsEnabled = preferences.getBoolean(kPreferences_autoConnectEnabled, false);
+                String autoConnectDeviceName = preferences.getString(kPreferences_autoConnectDeviceName, "");
+                if ((deviceName != null) && autoConnectIsEnabled && (autoConnectDeviceName.equals(deviceName))) {
+                    FragmentManager fragmentManager = getActivity().getSupportFragmentManager();
+                    fragmentManager.popBackStack(null, FragmentManager.POP_BACK_STACK_INCLUSIVE);
+                    fragmentManager.executePendingTransactions();
+                }
+            });
         }
 
         // Scan results
@@ -652,6 +664,7 @@ public class ScannerFragment extends Fragment implements ScannerStatusFragmentDi
 
         // Stop our auto-connect thread
         mAutoConnectThread.interrupt();
+        mAutoConnectThread = null;
 
         // Null out references to views to avoid leaks when the fragment is added to the backstack: https://stackoverflow.com/questions/59503689/could-navigation-arch-component-create-a-false-positive-memory-leak/59504797#59504797
         mBlePeripheralsAdapter = null;
