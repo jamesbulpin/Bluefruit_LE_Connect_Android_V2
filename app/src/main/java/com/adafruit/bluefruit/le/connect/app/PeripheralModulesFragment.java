@@ -67,15 +67,29 @@ public class PeripheralModulesFragment extends ConnectedPeripheralFragment {
     private RecyclerView mRecyclerView;
     private ModulesAdapter mModulesAdapter;
 
+    // Auto-launch
+    private String mAutoLaunchDeviceName;
+    private int mAutoLaunchModuleId;
+
     // region Fragment Lifecycle
-    public static PeripheralModulesFragment newInstance(@Nullable String singlePeripheralIdentifier) {      // if singlePeripheralIdentifier is null, uses multi-connect
+    public static PeripheralModulesFragment newInstance(@Nullable String singlePeripheralIdentifier, String autoLaunchDeviceName, int autoLaunchModuleId) {      // if singlePeripheralIdentifier is null, uses multi-connect
         PeripheralModulesFragment fragment = new PeripheralModulesFragment();
         fragment.setArguments(createFragmentArgs(singlePeripheralIdentifier));
+        fragment.enableAutoLaunch(autoLaunchDeviceName, autoLaunchModuleId);
         return fragment;
     }
 
     public PeripheralModulesFragment() {
         // Required empty public constructor
+    }
+
+    void enableAutoLaunch(String deviceName, int moduleId) {
+        mAutoLaunchDeviceName = deviceName;
+        mAutoLaunchModuleId = moduleId;
+    }
+
+    private void inhibitAutoLaunch() {
+        mAutoLaunchDeviceName = null;
     }
 
     @Override
@@ -158,7 +172,7 @@ public class PeripheralModulesFragment extends ConnectedPeripheralFragment {
 
         // Setup
         WeakReference<PeripheralModulesFragment> weakFragment = new WeakReference<>(this);
-        mModulesAdapter = new ModulesAdapter(context, mBatteryPeripherals, mBlePeripheral, view1 -> {
+        mModulesAdapter = new ModulesAdapter(context, mBatteryPeripherals, mBlePeripheral, mAutoLaunchDeviceName, mAutoLaunchModuleId, view1 -> {
             PeripheralModulesFragment fragment = weakFragment.get();
             if (fragment != null) {
                 final int moduleId = (int) view1.getTag();
@@ -171,6 +185,7 @@ public class PeripheralModulesFragment extends ConnectedPeripheralFragment {
             }
         });
         mRecyclerView.setAdapter(mModulesAdapter);
+        inhibitAutoLaunch();
     }
 
     @Override
@@ -309,11 +324,18 @@ public class PeripheralModulesFragment extends ConnectedPeripheralFragment {
         private View.OnClickListener mOnClickListener;
         private DirectModuleLauncher mDirectLaunch;
 
-        ModulesAdapter(@NonNull Context context, @NonNull List<BlePeripheralBattery> batteryPeripherals, @Nullable BlePeripheral blePeripheralForSingleConnectionMode, @NonNull View.OnClickListener onClickListener, DirectModuleLauncher directLaunch) {
+        // Auto-connect
+        private String mAutoLaunchDeviceName;
+        private int mAutoLaunchModuleId;
+        private boolean mAutoLaunchDone = false;
+
+        ModulesAdapter(@NonNull Context context, @NonNull List<BlePeripheralBattery> batteryPeripherals, @Nullable BlePeripheral blePeripheralForSingleConnectionMode, String autoLaunchDeviceName, int autoLaunchModuleId, @NonNull View.OnClickListener onClickListener, DirectModuleLauncher directLaunch) {
             mContext = context.getApplicationContext();
             mBatteryPeripherals = batteryPeripherals;
             mConnectionMode = blePeripheralForSingleConnectionMode == null ? CONNECTIONMODE_MULTIPLEPERIPHERAL : CONNECTIONMODE_SINGLEPERIPHERAL;
             mBlePeripheral = blePeripheralForSingleConnectionMode;
+            mAutoLaunchDeviceName = autoLaunchDeviceName;
+            mAutoLaunchModuleId = autoLaunchModuleId;
             mOnClickListener = onClickListener;
             mDirectLaunch = directLaunch;
         }
@@ -480,10 +502,14 @@ public class PeripheralModulesFragment extends ConnectedPeripheralFragment {
                 }
             }
 
-            // Automatically launch the UART module for our special device
-            if (mBlePeripheral.getName().equals("Bluefruit52")) {
-                if (mDirectLaunch != null) {
-                    mDirectLaunch.launch(MODULE_UART);
+            // Automatically launch the requested module for our chosen device
+            if (!mAutoLaunchDone && (mAutoLaunchDeviceName != null)) {
+                if (mBlePeripheral.getName().equals(mAutoLaunchDeviceName)) {
+                    Log.d(TAG, String.format("Attempting auto-launch of module ID %d on device ", mAutoLaunchModuleId) + mAutoLaunchDeviceName);
+                    if (mDirectLaunch != null) {
+                        mAutoLaunchDone = true;
+                        mDirectLaunch.launch(mAutoLaunchModuleId);
+                    }
                 }
             }
         }

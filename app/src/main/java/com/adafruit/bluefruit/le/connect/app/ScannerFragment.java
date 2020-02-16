@@ -73,6 +73,9 @@ public class ScannerFragment extends Fragment implements ScannerStatusFragmentDi
 
     private final static String kPreferences = "Scanner";
     private final static String kPreferences_filtersPanelOpen = "filtersPanelOpen";
+    private final static String kPreferences_autoConnectPanelOpen = "autoConnectPanelOpen";
+    private final static String kPreferences_autoConnectEnabled = "autoConnectEnabled";
+    private final static String kPreferences_autoConnectDeviceName = "autoConnectDeviceName";
 
     // Models
     private DfuViewModel mDfuViewModel;
@@ -103,6 +106,21 @@ public class ScannerFragment extends Fragment implements ScannerStatusFragmentDi
 
     // Data - Dialogs
     private ScannerStatusFragmentDialog mConnectingDialog;
+
+    // Data - Autoconnect
+    private View mAutoConnectPanelView;
+    private ImageView mAutoConnectExpandImageView;
+    private Button mAutoConnectButton;
+    private EditText mAutoConnectName;
+    private TextView mAutoConnectStatusTextView;
+    private CheckBox mAutoConnectCheckBox;
+
+    // Autoconnect retry thread
+    private Thread mAutoConnectThread;
+    private boolean mAutoConnectPending = false;
+    private boolean mAutoConnectActive = false;
+    private static final int AUTO_CONNECT_COUNTDOWN = 10;
+    private int mAutoConnectCountdown = AUTO_CONNECT_COUNTDOWN;
 
     // region Fragment lifecycle
     public static ScannerFragment newInstance() {
@@ -348,9 +366,151 @@ public class ScannerFragment extends Fragment implements ScannerStatusFragmentDi
 
             // Go to peripheral modules
             if (mListener != null) {
-                mListener.startPeripheralModules(null);
+                mListener.startPeripheralModules(null, null, 0);
             }
         });
+
+        // Auto-connect
+        mAutoConnectPanelView = view.findViewById(R.id.autoConnectExpansionView);
+        mAutoConnectExpandImageView = view.findViewById(R.id.autoConnectExpandImageView);
+        mAutoConnectName = view.findViewById(R.id.autoConnectNameEditText);
+        mAutoConnectStatusTextView = view.findViewById(R.id.autoconnectStatusTextView);
+        mAutoConnectCheckBox = view.findViewById(R.id.autoConnectCheckBox);
+        mAutoConnectButton = view.findViewById(R.id.autoConnectStartButton);
+        mAutoConnectButton.setOnClickListener(view14 -> {
+            mAutoConnectCountdown = AUTO_CONNECT_COUNTDOWN;
+            mAutoConnectPending = true;
+            mAutoConnectStatusTextView.setText("Connecting...");
+            attemptAutoConnect();
+        });
+
+        SharedPreferences preferences = context.getSharedPreferences(kPreferences, MODE_PRIVATE);
+        boolean autoConnectIsPanelOpen = preferences.getBoolean(kPreferences_autoConnectPanelOpen, false);
+        boolean autoConnectIsEnabled = preferences.getBoolean(kPreferences_autoConnectEnabled, false);
+        String autoConnectDeviceName = preferences.getString(kPreferences_autoConnectDeviceName, "");
+        mAutoConnectName.setText(autoConnectDeviceName);
+        mAutoConnectCheckBox.setChecked(autoConnectIsEnabled);
+        openAutoConnectPanel(autoConnectIsPanelOpen, false);
+
+        ViewGroup autoConnectTitleGroupView = view.findViewById(R.id.autoConnectTitleGroupView);
+        autoConnectTitleGroupView.setOnClickListener(view16 -> {
+            // onClickExpandAutoConnect
+            KeyboardUtils.dismissKeyboard(view16);
+
+            // Get current preference
+            SharedPreferences preferences1 = getContext().getSharedPreferences(kPreferences, MODE_PRIVATE);
+            boolean autoConnectIsPanelOpen1 = preferences1.getBoolean(kPreferences_autoConnectPanelOpen, false);
+
+            // Update
+            openAutoConnectPanel(!autoConnectIsPanelOpen1, true);
+        });
+
+        mAutoConnectCheckBox.setOnCheckedChangeListener((view17, checked) -> {
+            Log.d(TAG, "mAutoConnectCheckBox changed to " + checked);
+            Context theContext = getContext();
+            if (theContext != null) {
+                SharedPreferences.Editor preferencesEditor = theContext.getSharedPreferences(kPreferences, MODE_PRIVATE).edit();
+                preferencesEditor.putBoolean(kPreferences_autoConnectEnabled, checked);
+                preferencesEditor.apply();
+            }
+            mAutoConnectPending = false;
+            mAutoConnectCountdown = AUTO_CONNECT_COUNTDOWN;
+        });
+        mAutoConnectName.addTextChangedListener(new TextWatcher() {
+            @Override
+            public void afterTextChanged(Editable s) {
+                Log.d(TAG, "mAutoConnectName changed to " + s.toString());
+                Context theContext = getContext();
+                if (theContext != null) {
+                    SharedPreferences.Editor preferencesEditor = theContext.getSharedPreferences(kPreferences, MODE_PRIVATE).edit();
+                    preferencesEditor.putString(kPreferences_autoConnectDeviceName, s.toString());
+                    preferencesEditor.apply();
+                }
+                mAutoConnectPending = false;
+                mAutoConnectCountdown = AUTO_CONNECT_COUNTDOWN;
+            }
+
+            @Override
+            public void beforeTextChanged(CharSequence s, int start, int count, int after) {
+
+            }
+
+            @Override
+            public void onTextChanged(CharSequence s, int start, int before, int count) {
+
+            }
+        });
+
+        if (mAutoConnectThread == null) {
+            mAutoConnectThread = new Thread() {
+                public void run() {
+                    Log.d(TAG, "Starting auto-connect thread...");
+                    boolean lastEnabled = false;
+                    while (true) {
+                        try {
+                            if (isInterrupted()) {
+                                Log.d(TAG, "Auto-connect thread interrupted, terminating.");
+                                return;
+                            }
+                            Thread.sleep(1000);
+                            if (mAutoConnectActive && (mAutoConnectCheckBox != null)) {
+                                final String statusText;
+                                boolean isEnabled = mAutoConnectCheckBox.isChecked();
+                                if (isEnabled) {
+                                    if (mAutoConnectPending) {
+                                        statusText = null;
+                                    } else if (mAutoConnectCountdown == 0) {
+                                        mAutoConnectCountdown = AUTO_CONNECT_COUNTDOWN;
+                                        mAutoConnectPending = true;
+                                        statusText = "Connecting...";
+                                        Log.d(TAG, "Auto-connect attempt starting... ");
+                                        attemptAutoConnect();
+                                    } else {
+                                        statusText = String.format("In %ds...", mAutoConnectCountdown);
+                                        Log.d(TAG, "Auto-connect poll " + statusText);
+                                        mAutoConnectCountdown--;
+                                    }
+                                } else if (lastEnabled) {
+                                    // Has just become disabled
+                                    statusText = new String("");
+                                } else {
+                                    statusText = null;
+                                }
+                                lastEnabled = isEnabled;
+                                if (statusText != null) {
+                                    getActivity().runOnUiThread(new Runnable() {
+                                        @Override
+                                        public void run() {
+                                            if (mAutoConnectStatusTextView != null) {
+                                                mAutoConnectStatusTextView.setText(statusText);
+                                            }
+                                        }
+                                    });
+                                }
+                            }
+                        } catch (InterruptedException e) {
+                            // Nothing;
+                        }
+                    }
+                }
+            };
+            mAutoConnectActive = true;
+            mAutoConnectThread.start();
+        }
+    }
+
+    public void attemptAutoConnect() {
+        String deviceName = mAutoConnectName.getText().toString();
+        Log.d(TAG, "Start auto-connect '" + deviceName + "'");
+        if (!deviceName.equals("")) {
+            if (mBlePeripheralsAdapter != null) {
+                mBlePeripheralsAdapter.attemptAutoConnect(deviceName, () -> {
+                    Log.d(TAG, "Handling failure callback for auto-connect");
+                    mAutoConnectCountdown = AUTO_CONNECT_COUNTDOWN;
+                    mAutoConnectPending = false;
+                });
+            }
+        }
     }
 
     @Override
@@ -458,6 +618,11 @@ public class ScannerFragment extends Fragment implements ScannerStatusFragmentDi
     public void onResume() {
         super.onResume();
 
+        Log.d(TAG, "Resuming auto-connect thread");
+        mAutoConnectPending = false;
+        mAutoConnectCountdown = AUTO_CONNECT_COUNTDOWN;
+        mAutoConnectActive = true;
+
         FragmentActivity activity = getActivity();
         if (activity != null) {
             activity.getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_PAN | WindowManager.LayoutParams.SOFT_INPUT_STATE_HIDDEN);
@@ -476,12 +641,17 @@ public class ScannerFragment extends Fragment implements ScannerStatusFragmentDi
     public void onPause() {
         super.onPause();
 
+        Log.d(TAG, "Pausing auto-connect thread");
+        mAutoConnectActive = false;
         mScannerViewModel.stop();
     }
 
     @Override
     public void onDestroyView() {
         super.onDestroyView();
+
+        // Stop our auto-connect thread
+        mAutoConnectThread.interrupt();
 
         // Null out references to views to avoid leaks when the fragment is added to the backstack: https://stackoverflow.com/questions/59503689/could-navigation-arch-component-create-a-false-positive-memory-leak/59504797#59504797
         mBlePeripheralsAdapter = null;
@@ -501,6 +671,13 @@ public class ScannerFragment extends Fragment implements ScannerStatusFragmentDi
         mMultiConnectCheckBox = null;
         mMultiConnectConnectedDevicesTextView = null;
         mMultiConnectStartButton = null;
+
+        mAutoConnectPanelView = null;
+        mAutoConnectExpandImageView = null;
+        mAutoConnectCheckBox = null;
+        mAutoConnectName = null;
+        mAutoConnectButton = null;
+        mAutoConnectStatusTextView = null;
 
         removeConnectionStateDialog();
     }
@@ -592,6 +769,45 @@ public class ScannerFragment extends Fragment implements ScannerStatusFragmentDi
                     public void onAnimationEnd(Animator animation) {
                         super.onAnimationEnd(animation);
                         mMultiConnectPanelView.setVisibility(isOpen ? View.VISIBLE : View.GONE);
+                    }
+                });
+
+    }
+    // endregion
+
+    // region AutoConnect
+    private void openAutoConnectPanel(final boolean isOpen, boolean animated) {
+        // Save preference
+        Context context = getContext();
+        if (context != null) {
+            SharedPreferences.Editor preferencesEditor = context.getSharedPreferences(kPreferences, MODE_PRIVATE).edit();
+            preferencesEditor.putBoolean(kPreferences_autoConnectPanelOpen, isOpen);
+            preferencesEditor.apply();
+        }
+
+        // Check if already in the right position
+        if ((mAutoConnectPanelView.getVisibility() == View.VISIBLE && isOpen) || (mAutoConnectPanelView.getVisibility() == View.GONE && !isOpen)) {
+            return;
+        }
+
+        // Animate changes
+        final long animationDuration = animated ? 300 : 0;
+
+        RotateAnimation rotate = new RotateAnimation(isOpen ? -90 : 0, isOpen ? 0 : -90, Animation.RELATIVE_TO_SELF, 0.5f, Animation.RELATIVE_TO_SELF, 0.5f);
+        rotate.setDuration(animationDuration);
+        rotate.setInterpolator(new LinearInterpolator());
+        rotate.setFillAfter(true);
+        mAutoConnectExpandImageView.startAnimation(rotate);
+
+        mAutoConnectPanelView.setVisibility(isOpen ? View.VISIBLE : View.GONE);
+        mAutoConnectPanelView.animate()
+                .alpha(isOpen ? 1.0f : 0)
+                .setDuration(isOpen ? animationDuration : 0)
+                .setListener(new AnimatorListenerAdapter() {
+                    @Override
+                    public void onAnimationEnd(Animator animation) {
+                        super.onAnimationEnd(animation);
+                        mAutoConnectPanelView.setVisibility(isOpen ? View.VISIBLE : View.GONE);
                     }
                 });
 
@@ -700,6 +916,9 @@ public class ScannerFragment extends Fragment implements ScannerStatusFragmentDi
         removeConnectionStateDialog();
 
         Context context = getContext();
+        boolean autoLaunchEnabled = mAutoConnectCheckBox.isChecked();
+        String autoLaunchDeviceNameText = mAutoConnectName.getText().toString();
+        final String autoLaunchDeviceName = (!autoLaunchEnabled || autoLaunchDeviceNameText.equals(""))?null:autoLaunchDeviceNameText;
         if (isUpdateAvailable && latestRelease != null && context != null) {
             // Ask user if should update
             String message = String.format(getString(R.string.autoupdate_description_format), latestRelease.version);
@@ -709,13 +928,13 @@ public class ScannerFragment extends Fragment implements ScannerStatusFragmentDi
                     .setPositiveButton(R.string.autoupdate_startupdate, (dialog, which) -> startFirmwareUpdate(blePeripheral, latestRelease))
                     .setNeutralButton(R.string.autoupdate_later, (dialog, which) -> {
                         if (mListener != null) {
-                            mListener.startPeripheralModules(blePeripheral.getIdentifier());
+                            mListener.startPeripheralModules(blePeripheral.getIdentifier(), autoLaunchDeviceName, 1);
                         }
                     })
                     .setNegativeButton(R.string.autoupdate_ignore, (dialog, which) -> {
                         mDfuViewModel.setIgnoredVersion(context, latestRelease.version);
                         if (mListener != null) {
-                            mListener.startPeripheralModules(blePeripheral.getIdentifier());
+                            mListener.startPeripheralModules(blePeripheral.getIdentifier(), autoLaunchDeviceName, 1);
                         }
                     })
                     .setCancelable(false)
@@ -723,7 +942,7 @@ public class ScannerFragment extends Fragment implements ScannerStatusFragmentDi
         } else {
             // Go to peripheral modules
             if (mListener != null) {
-                mListener.startPeripheralModules(blePeripheral.getIdentifier());
+                mListener.startPeripheralModules(blePeripheral.getIdentifier(), autoLaunchDeviceName, 1);
             }
         }
     }
@@ -746,7 +965,7 @@ public class ScannerFragment extends Fragment implements ScannerStatusFragmentDi
 
         void scannerRequestLocationPermissionIfNeeded();
 
-        void startPeripheralModules(String singlePeripheralIdentifier);
+        void startPeripheralModules(String singlePeripheralIdentifier, String autoLaunchDeviceName, int autoLaunchModuleId);
     }
 
     // endregion

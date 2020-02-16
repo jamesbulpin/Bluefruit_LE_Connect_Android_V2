@@ -355,8 +355,8 @@ public class MainActivity extends AppCompatActivity implements ScannerFragment.S
         requestFineLocationPermissionIfNeeded();
     }
 
-    public void startPeripheralModules(String peripheralIdentifier) {
-        PeripheralModulesFragment fragment = PeripheralModulesFragment.newInstance(peripheralIdentifier);
+    public void startPeripheralModules(String peripheralIdentifier, String autoLaunchDeviceName, int autoLaunchModuleId) {
+        PeripheralModulesFragment fragment = PeripheralModulesFragment.newInstance(peripheralIdentifier, autoLaunchDeviceName, autoLaunchModuleId);
         FragmentManager fragmentManager = getSupportFragmentManager();
         FragmentTransaction fragmentTransaction = fragmentManager.beginTransaction()
                 .setCustomAnimations(R.anim.slide_in_left, R.anim.slide_out_right, R.anim.slide_in_right, R.anim.slide_out_left)

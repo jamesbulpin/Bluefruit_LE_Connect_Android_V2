@@ -37,6 +37,10 @@ import static com.adafruit.bluefruit.le.connect.ble.central.BleScanner.kDeviceTy
 import static com.adafruit.bluefruit.le.connect.ble.central.BleScanner.kDeviceType_Uart;
 import static com.adafruit.bluefruit.le.connect.ble.central.BleScanner.kDeviceType_UriBeacon;
 
+interface AutoConnectFailureHandler {
+    abstract void handle();
+}
+
 class BlePeripheralsAdapter extends RecyclerView.Adapter<BlePeripheralsAdapter.ViewHolder> {
     // Constants
     @SuppressWarnings("unused")
@@ -302,6 +306,53 @@ class BlePeripheralsAdapter extends RecyclerView.Adapter<BlePeripheralsAdapter.V
         return new ViewHolder(view);
     }
 
+    public void attemptAutoConnect(String deviceName, AutoConnectFailureHandler handler) {
+        Log.d(TAG, "Attempting auto-connect to device " + deviceName);
+        boolean found = false;
+        for (BlePeripheral blePeripheral: mBlePeripherals) {
+            String name = blePeripheral.getName();
+            Log.d(TAG, "Auto-connect - considering device " + name);
+            if (blePeripheral != null) {
+                if ((name != null) && name.equals((deviceName))) {
+                    if (blePeripheral.getConnectionState() == BlePeripheral.STATE_DISCONNECTED) {
+                        Log.d(TAG, "Auto-connect found our device - connecting");
+                        blePeripheral.connect(mContext);
+                        found = true;
+                        Thread checkConnection = new Thread(new Runnable() {
+                            BlePeripheral myBlePeripheral = blePeripheral;
+                            AutoConnectFailureHandler myHandler = handler;
+
+                            @Override
+                            public void run() {
+                                Log.d(TAG, "Starting disconnect check thread...");
+                                try {
+                                    Thread.sleep(10000);
+                                    if (myBlePeripheral.isDisconnected()) {
+                                        Log.d(TAG, "Disconnect check thread -> disconnected");
+                                        if (myHandler != null) {
+                                            myHandler.handle();
+                                        }
+                                    }
+                                    else {
+                                        Log.d(TAG, "Disconnect check thread -> connected");
+                                    }
+                                }
+                                catch (InterruptedException e) {
+                                }
+                            }
+                        });
+                        checkConnection.start();
+                    } else {
+                        Log.d(TAG, "Auto-connect found our device - not disconnected. Doing nothing.");
+                    }
+                }
+            }
+        }
+        if (!found && (handler != null)) {
+            handler.handle();
+        }
+    }
+
     @Override
     public void onBindViewHolder(@NonNull final ViewHolder holder, int position) {
         final BlePeripheral blePeripheral = mBlePeripherals.get(position);
@@ -350,18 +401,6 @@ class BlePeripheralsAdapter extends RecyclerView.Adapter<BlePeripheralsAdapter.V
         holder.dataTextView.setText(text);
 
         holder.rawDataButton.setOnClickListener(v -> mListener.onAdvertisementData(blePeripheral));
-
-        // Auto-connect if we find our target device
-        Log.d(TAG, "Checking for auto-connect for device '" + name + "'");
-        if (name.equals("Bluefruit52")) {
-            Log.d(TAG, "We have found our device!");
-            BlePeripheral selectedBlePeripheral = weakBlePeripheral.get();
-            if (selectedBlePeripheral != null) {
-                if (connectionState == BlePeripheral.STATE_DISCONNECTED) {
-                    selectedBlePeripheral.connect(mContext);
-                }
-            }
-        }
     }
 
     @Override

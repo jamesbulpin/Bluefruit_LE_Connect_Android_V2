@@ -104,6 +104,10 @@
 	<string name="multiconnect_connecteddevices_multiple_format" formatted="false">Connected to %d devices</string>
 	<string name="multiconnect_start_action">Start</string>
 
+	<!-- Autoconnect Management -->
+	<string name="autoconnect_title">Auto-connect</string>
+	<string name="autoconnect_connect_action">Now</string>
+	<string name="scanner_autoconnect_name_hint">Device name</string>
 
 	<!-- Peripheral Mode -->
 	<string name="peripheral_advertisinginfo">Advertising Info</string>
